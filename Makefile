@@ -17,7 +17,8 @@ SRC=src/main.c \
 src/hashmap.c\
 src/algo_utils.c \
 src/caesar.c \
-src/viginere.c
+src/viginere.c \
+src/rsa.c
 SRC_MAKE=$(SRC:.c=.d)
 OBJ=$(SRC:.c=.o)
 BIN=encro

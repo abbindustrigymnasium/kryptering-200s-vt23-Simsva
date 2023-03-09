@@ -7,7 +7,7 @@
 void algo_viginere(void) {
     char buf[256], key[256];
 
-    printf("input: ");
+    printf("plaintext: ");
     fgets(buf, sizeof buf, stdin);
     printf("key: ");
     fgets(key, sizeof key, stdin);
@@ -26,5 +26,5 @@ void algo_viginere(void) {
         else if(IS_LOWERCASE(*c))
             *c = 'a' + (*c - 'a' + shift) % 26, k++;
     }
-    printf("output: %s\n", buf);
+    printf("ciphertext: %s\n", buf);
 }

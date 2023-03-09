@@ -2,15 +2,16 @@
 #include <stdio.h>
 #include <stdint.h>
 #include <string.h>
+#include <time.h>
 
 #include <hashmap.h>
 #include <algorithms.h>
 
-const char *usage = ""
+const char *usage =
 "Usage: %s algorithm\n"
 "\n"
 "Algorithms:\n"
-"  caesar, viginere\n";
+"  caesar, viginere, rsa\n";
 
 struct algorithm {
   char *name;
@@ -38,6 +39,8 @@ int main(int argc, char *argv[]) {
 
   if(argc < 2) die_usage(argv[0]);
 
+  srand(time(NULL));
+
   algo_map = hashmap_new(sizeof(struct algorithm), 0, 0, 0,
                          algo_hash, algo_compar, NULL, NULL);
 
@@ -46,6 +49,9 @@ int main(int argc, char *argv[]) {
   });
   hashmap_set(algo_map, &(struct algorithm){
     .name = "viginere", .fn = algo_viginere,
+  });
+  hashmap_set(algo_map, &(struct algorithm){
+    .name = "rsa", .fn = algo_rsa,
   });
 
   algo = hashmap_get(algo_map, &(struct algorithm){ .name = argv[1] });

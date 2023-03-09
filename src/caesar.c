@@ -8,7 +8,7 @@ void algo_caesar(void) {
     char buf[256];
     unsigned char shift;
 
-    printf("input: ");
+    printf("plaintext: ");
     fgets(buf, sizeof buf, stdin);
     printf("shift: ");
     scanf("%hhu", &shift);
@@ -19,5 +19,5 @@ void algo_caesar(void) {
         else if(IS_LOWERCASE(*c))
             *c = 'a' + (*c - 'a' + shift) % 26;
     }
-    printf("output: %s\n", buf);
+    printf("ciphertext: %s\n", buf);
 }
