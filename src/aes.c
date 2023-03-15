@@ -25,6 +25,7 @@ typedef uint8_t state_t[4][4];
 void ctx_init(struct ctx *ctx, const uint8_t *key, const uint8_t *iv);
 /* buf is used as the output so its size must be a multiple of AES_BLOCKLEN */
 void cbc_encrypt_buf(struct ctx *ctx, uint8_t *buf, size_t sz);
+void pad_pkcs7(uint8_t *buf, size_t blocksz, size_t sz);
 
 static void xor_block(uint8_t *a, const uint8_t *b);
 static void add_round_key(state_t *state, const uint8_t *round_key, uint8_t round);
@@ -234,6 +235,11 @@ void cbc_encrypt_buf(struct ctx *ctx, uint8_t *buf, size_t sz) {
     memcpy(ctx->iv, iv, AES_BLOCKLEN);
 }
 
+void pad_pkcs7(uint8_t *buf, size_t blocksz, size_t sz) {
+    size_t padsz = blocksz - (sz + 1) % blocksz + 1;
+    memset(buf + sz, padsz, padsz);
+}
+
 static void print_hex(uint8_t *buf, size_t sz) {
     size_t i;
     for(i = 0; i < sz; i++)
@@ -254,7 +260,8 @@ void algo_aes(void) {
     printf("plaintext: ");
     fgets(buf, sizeof buf, stdin);
     buf[len = strcspn(buf, "\n")] = '\0';
-    len = (len + 0xf) & ~0xf;
+    pad_pkcs7((uint8_t *)buf, AES_BLOCKLEN, len);
+    len = (len+1 + 0xf) & ~0xf;
 
     cbc_encrypt_buf(&ctx, (uint8_t *)buf, len);
     printf("ciphertext: "); print_hex((uint8_t *)buf, len);
