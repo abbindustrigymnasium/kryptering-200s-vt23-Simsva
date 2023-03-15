@@ -4,20 +4,17 @@
 
 #include <algo_utils.h>
 
-void algo_caesar(void) {
+void algo_atbash(void) {
     char buf[256];
-    unsigned char shift;
 
     printf("plaintext: ");
     fgets(buf, sizeof buf, stdin);
-    printf("shift: ");
-    scanf("%hhu", &shift);
 
     for(char *c = buf; *c; c++) {
         if(IS_UPPERCASE(*c))
-            *c = 'A' + (*c - 'A' + shift) % 26;
+            *c = 'Z' - (*c - 'A');
         else if(IS_LOWERCASE(*c))
-            *c = 'a' + (*c - 'a' + shift) % 26;
+            *c = 'z' - (*c - 'a');
     }
     printf("ciphertext: %s", buf);
 }

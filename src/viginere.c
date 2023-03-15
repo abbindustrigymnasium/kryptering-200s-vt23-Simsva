@@ -26,5 +26,5 @@ void algo_viginere(void) {
         else if(IS_LOWERCASE(*c))
             *c = 'a' + (*c - 'a' + shift) % 26, k++;
     }
-    printf("ciphertext: %s\n", buf);
+    printf("ciphertext: %s", buf);
 }
