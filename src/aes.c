@@ -258,7 +258,7 @@ void algo_aes(void) {
     ctx_init(&ctx, key, iv);
 
     printf("plaintext: ");
-    fgets(buf, sizeof buf, stdin);
+    fgets(buf, sizeof buf - 1, stdin);
     buf[len = strcspn(buf, "\n")] = '\0';
     pad_pkcs7((uint8_t *)buf, AES_BLOCKLEN, len);
     len = (len+1 + 0xf) & ~0xf;

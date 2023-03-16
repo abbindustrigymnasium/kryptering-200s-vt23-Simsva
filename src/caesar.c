@@ -1,6 +1,7 @@
 #include <algorithms.h>
 
 #include <stdio.h>
+#include <string.h>
 
 #include <algo_utils.h>
 
@@ -10,6 +11,7 @@ void algo_caesar(void) {
 
     printf("plaintext: ");
     fgets(buf, sizeof buf, stdin);
+    buf[strcspn(buf, "\n")] = '\0';
     printf("shift: ");
     scanf("%hhu", &shift);
 
@@ -19,5 +21,5 @@ void algo_caesar(void) {
         else if(IS_LOWERCASE(*c))
             *c = 'a' + (*c - 'a' + shift) % 26;
     }
-    printf("ciphertext: %s", buf);
+    printf("ciphertext: %s\n", buf);
 }

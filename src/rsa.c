@@ -88,7 +88,7 @@ redo:
     return candidate;
 }
 
-void algo_rsa(void) {
+void algo_fake_rsa(void) {
     uint32_t p, q, e, d, n, totient;
     char buf[256];
 
@@ -104,5 +104,19 @@ void algo_rsa(void) {
     printf("ciphertext (hex): ");
     for(char *c = buf; *c; c++)
         printf("%08"PRIX32"", (uint32_t)powmod(*c, e, n));
+    printf("\n(d, n) = (%"PRIu32", %"PRIu32")\n", d, n);
+}
+
+void algo_rsa(void) {
+    uint32_t p, q, e, d, n, totient, m;
+
+    p = generate_prime(16); q = generate_prime(16);
+    n = p*q; totient = (p-1)*(q-1);
+    e = 65537;
+    d = modinv(e, totient);
+
+    printf("m: ");
+    scanf("%"SCNu32, &m);
+    printf("c: %"PRIu32"\n", (uint32_t)powmod(m, e, n));
     printf("\n(d, n) = (%"PRIu32", %"PRIu32")\n", d, n);
 }

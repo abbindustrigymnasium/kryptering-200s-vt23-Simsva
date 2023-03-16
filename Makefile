@@ -17,7 +17,7 @@ SRC=src/main.c \
 src/hashmap.c\
 src/algo_utils.c \
 src/caesar.c \
-src/viginere.c \
+src/vigenere.c \
 src/atbash.c \
 src/rsa.c \
 src/aes.c \

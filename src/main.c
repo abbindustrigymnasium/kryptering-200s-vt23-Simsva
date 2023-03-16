@@ -11,7 +11,7 @@ const char *usage =
 "Usage: %s algorithm\n"
 "\n"
 "Algorithms:\n"
-"  caesar, viginere, rsa, aes, atbash\n";
+"  caesar, vigenere, fakersa, rsa, aes, atbash\n";
 
 struct algorithm {
   char *name;
@@ -48,7 +48,10 @@ int main(int argc, char *argv[]) {
     .name = "caesar", .fn = algo_caesar,
   });
   hashmap_set(algo_map, &(struct algorithm){
-    .name = "viginere", .fn = algo_viginere,
+    .name = "vigenere", .fn = algo_vigenere,
+  });
+  hashmap_set(algo_map, &(struct algorithm){
+    .name = "fakersa", .fn = algo_fake_rsa,
   });
   hashmap_set(algo_map, &(struct algorithm){
     .name = "rsa", .fn = algo_rsa,

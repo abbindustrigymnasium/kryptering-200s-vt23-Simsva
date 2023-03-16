@@ -1,16 +1,19 @@
 #include <algorithms.h>
 
 #include <stdio.h>
+#include <string.h>
 
 #include <algo_utils.h>
 
-void algo_viginere(void) {
+void algo_vigenere(void) {
     char buf[256], key[256];
 
     printf("plaintext: ");
     fgets(buf, sizeof buf, stdin);
+    buf[strcspn(buf, "\n")] = '\0';
     printf("key: ");
     fgets(key, sizeof key, stdin);
+    key[strcspn(key, "\n")] = '\0';
 
     for(char *c = buf, *k = key; *c; c++) {
         unsigned char shift;
@@ -26,5 +29,5 @@ void algo_viginere(void) {
         else if(IS_LOWERCASE(*c))
             *c = 'a' + (*c - 'a' + shift) % 26, k++;
     }
-    printf("ciphertext: %s", buf);
+    printf("ciphertext: %s\n", buf);
 }
