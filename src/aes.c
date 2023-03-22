@@ -25,16 +25,23 @@ typedef uint8_t state_t[4][4];
 void ctx_init(struct ctx *ctx, const uint8_t *key, const uint8_t *iv);
 /* buf is used as the output so its size must be a multiple of AES_BLOCKLEN */
 void cbc_encrypt_buf(struct ctx *ctx, uint8_t *buf, size_t sz);
-void pad_pkcs7(uint8_t *buf, size_t blocksz, size_t sz);
+void cbc_decrypt_buf(struct ctx *ctx, uint8_t *buf, size_t sz);
+size_t pad_pkcs7(uint8_t *buf, size_t blocksz, size_t sz);
+size_t unpad_pkcs7(uint8_t *buf, size_t sz);
 
 static void xor_block(uint8_t *a, const uint8_t *b);
 static void add_round_key(state_t *state, const uint8_t *round_key, uint8_t round);
 static void sub_bytes(state_t *state);
+static void sub_bytes_inv(state_t *state);
 static void shift_rows(state_t *state);
+static void shift_rows_inv(state_t *state);
 static uint8_t xtime(uint8_t x);
+static uint8_t gmul(uint8_t a, uint8_t b);
 static void mix_columns(state_t *state);
+static void mix_columns_inv(state_t *state);
 static void key_expansion(uint8_t *round_key, const uint8_t *key);
 static void cipher(state_t *state, uint8_t *round_key);
+static void cipher_inv(state_t *state, uint8_t *round_key);
 static void keygen(uint8_t *key, size_t sz);
 static void print_hex(uint8_t *buf, size_t sz);
 
@@ -58,7 +65,7 @@ static const uint8_t sbox[0x100] = {
 };
 
 /* for decryption */
-static const uint8_t rsbox[0x100] __attribute__((unused)) = {
+static const uint8_t rsbox[0x100] = {
   0x52, 0x09, 0x6a, 0xd5, 0x30, 0x36, 0xa5, 0x38, 0xbf, 0x40, 0xa3, 0x9e, 0x81, 0xf3, 0xd7, 0xfb,
   0x7c, 0xe3, 0x39, 0x82, 0x9b, 0x2f, 0xff, 0x87, 0x34, 0x8e, 0x43, 0x44, 0xc4, 0xde, 0xe9, 0xcb,
   0x54, 0x7b, 0x94, 0x32, 0xa6, 0xc2, 0x23, 0x3d, 0xee, 0x4c, 0x95, 0x0b, 0x42, 0xfa, 0xc3, 0x4e,
@@ -86,6 +93,8 @@ static void xor_block(uint8_t *a, const uint8_t *b) {
         a[i] ^= b[i];
 }
 
+/* XOR state with round key
+ * is its own inverse */
 static void add_round_key(state_t *state, const uint8_t *round_key, uint8_t round) {
     /* printf("add_round_key %d\n", round); */
     uint8_t i, j;
@@ -94,6 +103,7 @@ static void add_round_key(state_t *state, const uint8_t *round_key, uint8_t roun
             (*state)[i][j] ^= round_key[round*16 + i*4 + j];
 }
 
+/* substitute all bytes in state */
 static void sub_bytes(state_t *state) {
     /* printf("sub_bytes\n"); */
     uint8_t i, j;
@@ -102,47 +112,125 @@ static void sub_bytes(state_t *state) {
             (*state)[i][j] = sbox[(*state)[i][j]];
 }
 
+static void sub_bytes_inv(state_t *state) {
+    uint8_t i, j;
+    for(i = 0; i < 4; i++)
+        for(j = 0; j < 4; j++)
+            (*state)[i][j] = rsbox[(*state)[i][j]];
+}
+
+/* shift/rotate rows in state */
 static void shift_rows(state_t *state) {
     /* printf("shift_rows\n"); */
     uint8_t temp;
 
-    temp = (*state)[0][1];
+    temp           = (*state)[0][1];
     (*state)[0][1] = (*state)[1][1];
     (*state)[1][1] = (*state)[2][1];
     (*state)[2][1] = (*state)[3][1];
     (*state)[3][1] = temp;
 
-    temp = (*state)[0][2];
+    temp           = (*state)[0][2];
     (*state)[0][2] = (*state)[2][2];
     (*state)[2][2] = temp;
-    temp = (*state)[1][2];
+    temp           = (*state)[1][2];
     (*state)[1][2] = (*state)[3][2];
     (*state)[3][2] = temp;
 
-    temp = (*state)[0][3];
+    temp           = (*state)[0][3];
     (*state)[0][3] = (*state)[3][3];
     (*state)[3][3] = (*state)[2][3];
     (*state)[2][3] = (*state)[1][3];
     (*state)[1][3] = temp;
 }
 
+static void shift_rows_inv(state_t *state) {
+    uint8_t temp;
+
+    temp           = (*state)[3][1];
+    (*state)[3][1] = (*state)[2][1];
+    (*state)[2][1] = (*state)[1][1];
+    (*state)[1][1] = (*state)[0][1];
+    (*state)[0][1] = temp;
+
+    temp           = (*state)[0][2];
+    (*state)[0][2] = (*state)[2][2];
+    (*state)[2][2] = temp;
+    temp           = (*state)[1][2];
+    (*state)[1][2] = (*state)[3][2];
+    (*state)[3][2] = temp;
+
+    temp           = (*state)[0][3];
+    (*state)[0][3] = (*state)[1][3];
+    (*state)[1][3] = (*state)[2][3];
+    (*state)[2][3] = (*state)[3][3];
+    (*state)[3][3] = temp;
+}
+
 static uint8_t xtime(uint8_t x) {
     return ((x<<1) ^ (((x>>7) & 1) * 0x1b));
 }
 
+/* multiply in the field GF(2**8) */
+static uint8_t gmul(uint8_t a, uint8_t b) {
+    return (((b & 1) * a) ^
+         ((b>>1 & 1) * xtime(a)) ^
+         ((b>>2 & 1) * xtime(xtime(a))) ^
+         ((b>>3 & 1) * xtime(xtime(xtime(a)))) ^
+         ((b>>4 & 1) * xtime(xtime(xtime(xtime(a))))));
+}
+
+/* I have literally no idea why this works but it apparently does matrix
+ * multiplication in GF(2**8) */
+/* static void mix_columns(state_t *state) { */
+/*     /\* printf("mix_columns\n"); *\/ */
+/*     uint8_t i, tmp, tm, t; */
+/*     for (i = 0; i < 4; ++i) */
+/*     { */
+/*         t   = (*state)[i][0]; */
+/*         tmp = (*state)[i][0] ^ (*state)[i][1] ^ (*state)[i][2] ^ (*state)[i][3]; */
+/*         tm  = (*state)[i][0] ^ (*state)[i][1];  tm = xtime(tm);  (*state)[i][0] ^= tm ^ tmp; */
+/*         tm  = (*state)[i][1] ^ (*state)[i][2];  tm = xtime(tm);  (*state)[i][1] ^= tm ^ tmp; */
+/*         tm  = (*state)[i][2] ^ (*state)[i][3];  tm = xtime(tm);  (*state)[i][2] ^= tm ^ tmp; */
+/*         tm  = (*state)[i][3] ^ t;               tm = xtime(tm);  (*state)[i][3] ^= tm ^ tmp; */
+/*     } */
+/* } */
+
+/* matrix multiplication in the field GF(2**8) */
 static void mix_columns(state_t *state) {
-    /* printf("mix_columns\n"); */
-    uint8_t i, tmp, tm, t;
-    for (i = 0; i < 4; ++i)
-    {
-        t   = (*state)[i][0];
-        tmp = (*state)[i][0] ^ (*state)[i][1] ^ (*state)[i][2] ^ (*state)[i][3];
-        tm  = (*state)[i][0] ^ (*state)[i][1];  tm = xtime(tm);  (*state)[i][0] ^= tm ^ tmp;
-        tm  = (*state)[i][1] ^ (*state)[i][2];  tm = xtime(tm);  (*state)[i][1] ^= tm ^ tmp;
-        tm  = (*state)[i][2] ^ (*state)[i][3];  tm = xtime(tm);  (*state)[i][2] ^= tm ^ tmp;
-        tm  = (*state)[i][3] ^ t;               tm = xtime(tm);  (*state)[i][3] ^= tm ^ tmp;
+    uint8_t i, a, b, c, d;
+
+    for(i = 0; i < AES_COLUMNS; i++) {
+        a = (*state)[i][0];
+        b = (*state)[i][1];
+        c = (*state)[i][2];
+        d = (*state)[i][3];
+
+        (*state)[i][0] = gmul(a, 0x2) ^ gmul(b, 0x3) ^ gmul(c, 0x1) ^ gmul(d, 0x1);
+        (*state)[i][1] = gmul(a, 0x1) ^ gmul(b, 0x2) ^ gmul(c, 0x3) ^ gmul(d, 0x1);
+        (*state)[i][2] = gmul(a, 0x1) ^ gmul(b, 0x1) ^ gmul(c, 0x2) ^ gmul(d, 0x3);
+        (*state)[i][3] = gmul(a, 0x3) ^ gmul(b, 0x1) ^ gmul(c, 0x1) ^ gmul(d, 0x2);
     }
 }
+
+/* multiply with inverse matrix */
+static void mix_columns_inv(state_t *state) {
+    uint8_t i, a, b, c, d;
+
+    for(i = 0; i < AES_COLUMNS; i++) {
+        a = (*state)[i][0];
+        b = (*state)[i][1];
+        c = (*state)[i][2];
+        d = (*state)[i][3];
+
+        (*state)[i][0] = gmul(a, 0xe) ^ gmul(b, 0xb) ^ gmul(c, 0xd) ^ gmul(d, 0x9);
+        (*state)[i][1] = gmul(a, 0x9) ^ gmul(b, 0xe) ^ gmul(c, 0xb) ^ gmul(d, 0xd);
+        (*state)[i][2] = gmul(a, 0xd) ^ gmul(b, 0x9) ^ gmul(c, 0xe) ^ gmul(d, 0xb);
+        (*state)[i][3] = gmul(a, 0xb) ^ gmul(b, 0xd) ^ gmul(c, 0x9) ^ gmul(d, 0xe);
+    }
+}
+
+/* AES key schedule for round key generation */
 static void key_expansion(uint8_t *round_key, const uint8_t *key) {
     unsigned i, j, k;
     uint8_t tempa[4];
@@ -208,6 +296,22 @@ static void cipher(state_t *state, uint8_t *round_key) {
     }
 }
 
+/* main AES cipher function in reverse */
+static void cipher_inv(state_t *state, uint8_t *round_key) {
+    uint8_t round;
+
+    add_round_key(state, round_key, AES_ROUNDS);
+
+    /* each round here corresponds to two half-rounds in the normal cipher */
+    for(round = AES_ROUNDS-1;; round--) {
+        shift_rows_inv(state);
+        sub_bytes_inv(state);
+        add_round_key(state, round_key, round);
+        if(round == 0) break;
+        mix_columns_inv(state);
+    }
+}
+
 static void keygen(uint8_t *key, size_t sz) {
     for(uint8_t i = 0; i < sz; i++)
         key[i] = rand() % 0x100;
@@ -235,9 +339,35 @@ void cbc_encrypt_buf(struct ctx *ctx, uint8_t *buf, size_t sz) {
     memcpy(ctx->iv, iv, AES_BLOCKLEN);
 }
 
-void pad_pkcs7(uint8_t *buf, size_t blocksz, size_t sz) {
+void cbc_decrypt_buf(struct ctx *ctx, uint8_t *buf, size_t sz) {
+    size_t i;
+    uint8_t iv[AES_BLOCKLEN];
+
+    for(i = 0; i < sz; i += AES_BLOCKLEN) {
+        memcpy(iv, buf, AES_BLOCKLEN);
+        cipher_inv((state_t *)buf, ctx->round_key);
+        xor_block(buf, ctx->iv);
+        memcpy(ctx->iv, iv, AES_BLOCKLEN);
+        buf += AES_BLOCKLEN;
+    }
+}
+
+/* adds PKCS #7 padding to buf
+ * sz is size excluding padding
+ * returns padded size */
+size_t pad_pkcs7(uint8_t *buf, size_t blocksz, size_t sz) {
     size_t padsz = blocksz - (sz + 1) % blocksz + 1;
     memset(buf + sz, padsz, padsz);
+    return (sz+1 + 0xf) & ~0xf;
+}
+
+/* removes PKCS #7 from buf
+ * sz is size including padding
+ * returns unpadded size */
+size_t unpad_pkcs7(uint8_t *buf, size_t sz) {
+    uint8_t padsz = buf[sz-1];
+    memset(buf + sz - padsz, 0, padsz);
+    return sz - padsz;
 }
 
 static void print_hex(uint8_t *buf, size_t sz) {
@@ -260,11 +390,17 @@ void algo_aes(void) {
     printf("plaintext: ");
     fgets(buf, sizeof buf - 1, stdin);
     buf[len = strcspn(buf, "\n")] = '\0';
-    pad_pkcs7((uint8_t *)buf, AES_BLOCKLEN, len);
-    len = (len+1 + 0xf) & ~0xf;
+    len = pad_pkcs7((uint8_t *)buf, AES_BLOCKLEN, len);
 
+    /* encryption */
     cbc_encrypt_buf(&ctx, (uint8_t *)buf, len);
     printf("ciphertext: "); print_hex((uint8_t *)buf, len);
     printf("key: "); print_hex((uint8_t *)key, sizeof key);
     printf("iv: "); print_hex((uint8_t *)iv, sizeof iv);
+
+    /* decryption */
+    memcpy(ctx.iv, iv, AES_BLOCKLEN);
+    cbc_decrypt_buf(&ctx, (uint8_t *)buf, len);
+    unpad_pkcs7((uint8_t *)buf, len);
+    printf("decrypted: %s\n", buf);
 }
