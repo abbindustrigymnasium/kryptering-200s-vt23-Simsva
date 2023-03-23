@@ -15,6 +15,7 @@ static uintmax_t powmod(uintmax_t b, uintmax_t e, uintmax_t m) {
     return c;
 }
 
+/* extended Euclidian algorithm */
 static intmax_t modinv(intmax_t a, intmax_t m) {
     intmax_t m0 = m, y = 0, x = 1;
 
@@ -67,16 +68,11 @@ uint16_t primes[100] = {
   419, 421, 431, 433, 439, 443, 449, 457, 461, 463,
   467, 479, 487, 491, 499, 503, 509, 521, 523, 541,
 };
-static uint32_t generate_prime(uint8_t bit) {
-    /* uint32_t max, min, candidate; */
-    uint32_t candidate;
+static uintmax_t generate_prime(uint8_t bit) {
+    uintmax_t candidate;
 
-    /* randomize */
-    /* max = (1<<bit) - 1; */
-    /* min = (1<<(bit-1)) + 1; */
 redo:
-    /* candidate = min + rand() % (max-min+1); */
-    /* generate an odd number */
+    /* generate an odd number with bit-length "bit" */
     candidate = (1<<(bit-1)) | (1<<0) | ((rand() % (1<<(bit-2)))<<1);
 
     for(uint8_t i = 0; i < sizeof(primes)/sizeof(primes[0]); i++)
@@ -89,10 +85,13 @@ redo:
 }
 
 void algo_fake_rsa(void) {
-    uint32_t p, q, e, d, n, totient;
+    uint16_t p, q;
+    uint32_t e, d, n, totient;
     char buf[256];
 
-    p = generate_prime(16); q = generate_prime(16);
+    do
+        p = generate_prime(16), q = generate_prime(16);
+    while(p == q);
     n = p*q; totient = (p-1)*(q-1);
     e = 65537;
     d = modinv(e, totient);
@@ -103,14 +102,17 @@ void algo_fake_rsa(void) {
     fgets(buf, sizeof buf, stdin);
     printf("ciphertext (hex): ");
     for(char *c = buf; *c; c++)
-        printf("%08"PRIX32"", (uint32_t)powmod(*c, e, n));
+        printf("%08"PRIX32, (uint32_t)powmod(*c, e, n));
     printf("\n(d, n) = (%"PRIu32", %"PRIu32")\n", d, n);
 }
 
 void algo_rsa(void) {
-    uint32_t p, q, e, d, n, totient, m;
+    uint16_t p, q;
+    uint32_t e, d, n, totient, m;
 
-    p = generate_prime(16); q = generate_prime(16);
+    do
+        p = generate_prime(16), q = generate_prime(16);
+    while(p == q);
     n = p*q; totient = (p-1)*(q-1);
     e = 65537;
     d = modinv(e, totient);

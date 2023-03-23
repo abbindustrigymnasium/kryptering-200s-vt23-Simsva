@@ -5,13 +5,13 @@
 #include <stdint.h>
 #include <string.h>
 
-#define AES_KEYLEN     16
-#define AES_KEYEXPSIZE (16*11)
-#define AES_BLOCKLEN   16
+#define AES_KEYLEN     16            /* key size in bytes */
+#define AES_KEYEXPSIZE (16*11)       /* expanded key size */
+#define AES_BLOCKLEN   16            /* block size in bytes */
 
-#define AES_COLUMNS    4
-#define AES_KEY_WORD   4
-#define AES_ROUNDS     10
+#define AES_COLUMNS    4             /* number of columns in state matrix */
+#define AES_KEY_WORD   4             /* number of 32-bit words in key */
+#define AES_ROUNDS     10            /* number of cipher rounds */
 
 struct ctx {
     uint8_t round_key[AES_KEYEXPSIZE];
@@ -23,9 +23,11 @@ typedef uint8_t state_t[4][4];
 
 /* forward declarations */
 void ctx_init(struct ctx *ctx, const uint8_t *key, const uint8_t *iv);
+
 /* buf is used as the output so its size must be a multiple of AES_BLOCKLEN */
 void cbc_encrypt_buf(struct ctx *ctx, uint8_t *buf, size_t sz);
 void cbc_decrypt_buf(struct ctx *ctx, uint8_t *buf, size_t sz);
+
 size_t pad_pkcs7(uint8_t *buf, size_t blocksz, size_t sz);
 size_t unpad_pkcs7(uint8_t *buf, size_t sz);
 
@@ -64,7 +66,6 @@ static const uint8_t sbox[0x100] = {
   0x8c, 0xa1, 0x89, 0x0d, 0xbf, 0xe6, 0x42, 0x68, 0x41, 0x99, 0x2d, 0x0f, 0xb0, 0x54, 0xbb, 0x16,
 };
 
-/* for decryption */
 static const uint8_t rsbox[0x100] = {
   0x52, 0x09, 0x6a, 0xd5, 0x30, 0x36, 0xa5, 0x38, 0xbf, 0x40, 0xa3, 0x9e, 0x81, 0xf3, 0xd7, 0xfb,
   0x7c, 0xe3, 0x39, 0x82, 0x9b, 0x2f, 0xff, 0x87, 0x34, 0x8e, 0x43, 0x44, 0xc4, 0xde, 0xe9, 0xcb,
@@ -96,7 +97,6 @@ static void xor_block(uint8_t *a, const uint8_t *b) {
 /* XOR state with round key
  * is its own inverse */
 static void add_round_key(state_t *state, const uint8_t *round_key, uint8_t round) {
-    /* printf("add_round_key %d\n", round); */
     uint8_t i, j;
     for(i = 0; i < 4; i++)
         for(j = 0; j < 4; j++)
@@ -105,7 +105,6 @@ static void add_round_key(state_t *state, const uint8_t *round_key, uint8_t roun
 
 /* substitute all bytes in state */
 static void sub_bytes(state_t *state) {
-    /* printf("sub_bytes\n"); */
     uint8_t i, j;
     for(i = 0; i < 4; i++)
         for(j = 0; j < 4; j++)
@@ -121,7 +120,6 @@ static void sub_bytes_inv(state_t *state) {
 
 /* shift/rotate rows in state */
 static void shift_rows(state_t *state) {
-    /* printf("shift_rows\n"); */
     uint8_t temp;
 
     temp           = (*state)[0][1];
@@ -171,7 +169,7 @@ static uint8_t xtime(uint8_t x) {
     return ((x<<1) ^ (((x>>7) & 1) * 0x1b));
 }
 
-/* multiply in the field GF(2**8) */
+/* multiply in GF(2**8) */
 static uint8_t gmul(uint8_t a, uint8_t b) {
     return (((b & 1) * a) ^
          ((b>>1 & 1) * xtime(a)) ^
@@ -183,7 +181,6 @@ static uint8_t gmul(uint8_t a, uint8_t b) {
 /* I have literally no idea why this works but it apparently does matrix
  * multiplication in GF(2**8) */
 /* static void mix_columns(state_t *state) { */
-/*     /\* printf("mix_columns\n"); *\/ */
 /*     uint8_t i, tmp, tm, t; */
 /*     for (i = 0; i < 4; ++i) */
 /*     { */
@@ -196,7 +193,7 @@ static uint8_t gmul(uint8_t a, uint8_t b) {
 /*     } */
 /* } */
 
-/* matrix multiplication in the field GF(2**8) */
+/* matrix multiplication in GF(2**8) */
 static void mix_columns(state_t *state) {
     uint8_t i, a, b, c, d;
 
@@ -233,7 +230,7 @@ static void mix_columns_inv(state_t *state) {
 /* AES key schedule for round key generation */
 static void key_expansion(uint8_t *round_key, const uint8_t *key) {
     unsigned i, j, k;
-    uint8_t tempa[4];
+    uint8_t prev_word[4];
 
     for(i = 0; i < AES_KEY_WORD; i++) {
         round_key[i*4 + 0] = key[i*4 + 0];
@@ -244,36 +241,38 @@ static void key_expansion(uint8_t *round_key, const uint8_t *key) {
 
     for(i = AES_KEY_WORD; i < AES_COLUMNS*(AES_ROUNDS + 1); i++) {
         k = (i - 1)*4;
-        tempa[0] = round_key[k + 0];
-        tempa[1] = round_key[k + 1];
-        tempa[2] = round_key[k + 2];
-        tempa[3] = round_key[k + 3];
+        prev_word[0] = round_key[k + 0];
+        prev_word[1] = round_key[k + 1];
+        prev_word[2] = round_key[k + 2];
+        prev_word[3] = round_key[k + 3];
 
+        /* if the first word in key then do stuff with the previous key */
         if(i % AES_KEY_WORD == 0) {
             /* rot word */
             {
-                const uint8_t tmp = tempa[0];
-                tempa[0] = tempa[1];
-                tempa[1] = tempa[2];
-                tempa[2] = tempa[3];
-                tempa[3] = tmp;
+                const uint8_t tmp = prev_word[0];
+                prev_word[0] = prev_word[1];
+                prev_word[1] = prev_word[2];
+                prev_word[2] = prev_word[3];
+                prev_word[3] = tmp;
             }
 
             /* sbox word */
-            tempa[0] = sbox[tempa[0]];
-            tempa[1] = sbox[tempa[1]];
-            tempa[2] = sbox[tempa[2]];
-            tempa[3] = sbox[tempa[3]];
+            prev_word[0] = sbox[prev_word[0]];
+            prev_word[1] = sbox[prev_word[1]];
+            prev_word[2] = sbox[prev_word[2]];
+            prev_word[3] = sbox[prev_word[3]];
 
-            tempa[0] ^= rcon[i/AES_KEY_WORD];
+            prev_word[0] ^= rcon[i/AES_KEY_WORD];
         }
 
+        /* current word = previous key's word ^ previous word */
         j = i*4;
         k = (i - AES_KEY_WORD)*4;
-        round_key[j + 0] = round_key[k + 0] ^ tempa[0];
-        round_key[j + 1] = round_key[k + 1] ^ tempa[1];
-        round_key[j + 2] = round_key[k + 2] ^ tempa[2];
-        round_key[j + 3] = round_key[k + 3] ^ tempa[3];
+        round_key[j + 0] = round_key[k + 0] ^ prev_word[0];
+        round_key[j + 1] = round_key[k + 1] ^ prev_word[1];
+        round_key[j + 2] = round_key[k + 2] ^ prev_word[2];
+        round_key[j + 3] = round_key[k + 3] ^ prev_word[3];
     }
 }
 
@@ -282,17 +281,12 @@ static void cipher(state_t *state, uint8_t *round_key) {
     uint8_t round = 0;
 
     add_round_key(state, round_key, round);
-    /* printf("cipher 1: ");print_hex((uint8_t *)state, 16); */
 
     for(round = 1; round < AES_ROUNDS+1; round++) {
         sub_bytes(state);
-        /* printf("cipher 2: ");print_hex((uint8_t *)state, 16); */
         shift_rows(state);
-        /* printf("cipher 3: ");print_hex((uint8_t *)state, 16); */
         if(round != AES_ROUNDS) mix_columns(state);
-        /* printf("cipher 4: ");print_hex((uint8_t *)state, 16); */
         add_round_key(state, round_key, round);
-        /* printf("cipher 5: ");print_hex((uint8_t *)state, 16); */
     }
 }
 
@@ -326,13 +320,10 @@ void cbc_encrypt_buf(struct ctx *ctx, uint8_t *buf, size_t sz) {
     size_t i;
     uint8_t *iv = ctx->iv;
 
-    /* printf("encrypt begin: ");print_hex(buf, 16); */
     for(i = 0; i < sz; i += AES_BLOCKLEN) {
         xor_block(buf, iv);
-        /* printf("xor_block: ");print_hex(buf, 16); */
         cipher((state_t *)buf, ctx->round_key);
-        /* printf("cipher: ");print_hex(buf, 16); */
-        iv = buf; /* insecure or so I've heard */
+        iv = buf;
         buf += AES_BLOCKLEN;
     }
 
@@ -366,6 +357,8 @@ size_t pad_pkcs7(uint8_t *buf, size_t blocksz, size_t sz) {
  * returns unpadded size */
 size_t unpad_pkcs7(uint8_t *buf, size_t sz) {
     uint8_t padsz = buf[sz-1];
+    /* TODO: error */
+    if(padsz > AES_BLOCKLEN) return (size_t)-1;
     memset(buf + sz - padsz, 0, padsz);
     return sz - padsz;
 }
